@@ -79,6 +79,13 @@ void getVariables() {
 
 void charge() {
   if (charging) {
+
+    // Counter berdasarkan RPM
+    if (digitalRead(productRpmIn)) {
+      productPumpInStatus = !productPumpInStatus;
+      curr ++;
+    }
+
     if(chargingPeriod > 0) {
       turnOffFlag = true;
       if (blink && writeFlag) {
