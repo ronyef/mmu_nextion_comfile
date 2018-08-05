@@ -46,6 +46,8 @@ int vaRate = 240;    // Flow rate in lpm
 int vaDelay = 15;     // Hopper delay timer
 int vaTotal;
 
+bool productPumpInStatus = false;  //deteksi putaran pompa
+
 unsigned long count = 10000;
 bool blink = false;
 bool writeFlag = true;
@@ -174,7 +176,7 @@ void loop() {
           charging = true;
           auto2StartMillis = currentMillis;
         } else if (targetVal <= 0 && auto2RequestStatus){
-          getVariables(); 
+          getVariables();
           manualCharging = true;
           charging = true;
           chargingPeriod = 60;
