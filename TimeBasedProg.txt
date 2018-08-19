@@ -42,23 +42,14 @@ const int flowRate = 4;   //240 l/m
 
 int auto1Val;
 int auto2Val;
-float vaRate = 136;    // Flow rate in lpm
+int vaRate = 240;    // Flow rate in lpm
 int vaDelay = 15;     // Hopper delay timer
-int vaRpm = 180;     // RPM reference
-float kgprev;
-float currVal;
-float vaTotal;
-
-
-bool productPumpInStatus = false;  //deteksi putaran pompa
-int pumpCount = 0;
-bool countEnable = false;
+int vaTotal;
 
 unsigned long count = 10000;
 bool blink = false;
 bool writeFlag = true;
 bool turnOffFlag = true;
-bool hopperFlag = true;
 
 void tick() {
   if (currentMillis - startMillis >= period) {
@@ -74,11 +65,7 @@ void allowHopperFill() {
     hopperFillAllowed = true;
     currentMillis = hopperStartMillis;
   } else {
-    if (hopperFlag) {
-      hopperFillAllowed = true;
-    } else {
-      hopperFillAllowed = false;
-    }
+    hopperFillAllowed = false;
   }
 }
 
@@ -86,71 +73,35 @@ void getVariables() {
   vaRate = myNextion.getComponentValue("va0");
   vaDelay = myNextion.getComponentValue("va1");
   vaTotal = myNextion.getComponentValue("n3");
-  vaRpm = myNextion.getComponentValue("va2");
 }
 
 void charge() {
   if (charging) {
-    if (curr < pumpCount) {
+    if(chargingPeriod > 0) {
       turnOffFlag = true;
-      if (digitalRead(productRpmIn)  && countEnable) {
-        curr++;
-        vaTotal += kgprev;
-        currVal += kgprev;
+      if (blink && writeFlag) {
+        // increment counter + total dan tampilkan
+        int currVal = curr += vaRate / 60;
+        vaTotal += vaRate / 60;
         myNextion.setComponentValue("n2", currVal);
-        Serial.print("Current: ");
-        Serial.println(currVal);
-        Serial.println("total smntr");
         myNextion.setComponentValue("n3", vaTotal);
-        countEnable = false;
-      }
-      else if (!digitalRead(productRpmIn)) {
-        countEnable = true;
+        if (!manualCharging) {
+          chargingPeriod --;
+        }
+        writeFlag = false;
+      } else if (!blink) {
+        writeFlag = true;
       }
     } else {
       charging = false;
-      curr = 0;
-      // currVal = 0;
+      auto1RequestStatus = false;
       if (turnOffFlag) {
-        float dev = targetVal - currVal;
-        Serial.print("Deviasi: ");
-        Serial.println(dev);
-        if(dev > 0) {
-          vaTotal += dev;
-          // currVal = 0;
-          Serial.print("Total: ");
-          Serial.println(vaTotal);
-          myNextion.setComponentValue("n2", 0);
-          myNextion.setComponentValue("n3", vaTotal);
-          Serial.println("total akhir");
-        }
-        delay(1000);
         myNextion.sendCommand("click bt1,1");
         digitalWrite(relay2, LOW);
         auto2RequestStatus = false;
         turnOffFlag = false;
-
       }
-    }
-  }
-  if (manualCharging) {
-    // Serial.println("Manual Charging");
-    if (digitalRead(productRpmIn)  && countEnable) {
-      Serial.print("counting: ");
-      curr++;
-      currVal += kgprev;
-      vaTotal += kgprev;
-      Serial.print("Current: ");
-      Serial.println(currVal);
-      Serial.print("Total: ");
-      Serial.println(vaTotal);
-      myNextion.setComponentValue("n2", currVal);
-      myNextion.setComponentValue("n3", vaTotal);
-      countEnable = false;
-    }
 
-    if (!digitalRead(productRpmIn)) {
-      countEnable = true;
     }
   }
 }
@@ -180,15 +131,15 @@ void setup() {
 void loop() {
     String message = myNextion.listen();
 
-    // if (digitalRead(auto1In)) {
-    //     auto1RequestStatus = !auto1RequestStatus;
-    // }
-    //
-    // if (digitalRead(auto2In)) {
-    //     auto2RequestStatus = !auto2RequestStatus;
-    // }
+    if (digitalRead(auto1In)) {
+        auto1RequestStatus = !auto1RequestStatus;
+    }
 
-    if (message == "65 0 2 1 ffff ffff ffff" || digitalRead(auto1In)) {
+    if (digitalRead(auto2In)) {
+        auto2RequestStatus = !auto2RequestStatus;
+    }
+
+    if (message == "65 0 2 1 ffff ffff ffff") {
         getVariables();
         Serial.print("Auto1 Start. Code: ");
         Serial.println(message);
@@ -197,7 +148,7 @@ void loop() {
         auto1RequestStatus = !auto1RequestStatus;
     }
 
-    if (message == "65 0 3 1 ffff ffff ffff" || digitalRead(auto2In)) {
+    if (message == "65 0 3 1 ffff ffff ffff") {
         Serial.print("Auto2 Start. Code: ");
         Serial.println(message);
         auto2RequestStatus = !auto2RequestStatus;
@@ -205,42 +156,33 @@ void loop() {
         curr = myNextion.getComponentValue("n2");
         if (targetVal > 0 && auto2RequestStatus) {
           getVariables();
-          kgprev = vaRate/vaRpm;
-          pumpCount = targetVal / kgprev;
+          unsigned long period = (targetVal - curr) / (vaRate / 60);
+          chargingPeriod = period ;
           Serial.print("Target: ");
           Serial.print(targetVal);
           Serial.print(", Current: ");
-          Serial.println(curr);
-          Serial.print("Flowrate: ");
+          Serial.print(curr);
+          Serial.print(", Rate: ");
           Serial.println(vaRate);
-          Serial.print("@RPM: ");
-          Serial.println(vaRpm);
-          Serial.print("Kg/Rev: ");
-          Serial.println(kgprev);
-          Serial.print("Hopper Delay: ");
-          Serial.println(vaDelay);
-          Serial.print("num Rotation: ");
-          Serial.println(pumpCount);
+          Serial.print(", Delay: ");
+          Serial.print(vaDelay);
+          Serial.print(", Period: ");
+          Serial.println(chargingPeriod);
           Serial.println("Start charging...");
-          Serial.println("");
-          curr = 0;
-          currVal = 0;
           manualCharging = false;
           digitalWrite(relay2, HIGH);
           charging = true;
-          manualCharging = false;
-          // auto2StartMillis = currentMillis;
+          auto2StartMillis = currentMillis;
         } else if (targetVal <= 0 && auto2RequestStatus){
-          getVariables();
-          kgprev = vaRate/vaRpm;
-          curr = 0;
-          currVal = 0;
+          getVariables(); 
           manualCharging = true;
-          charging = false;
-          //chargingPeriod = 60;
+          charging = true;
+          chargingPeriod = 60;
           digitalWrite(relay2, HIGH);
-          Serial.print("Manual Charging: ");
-          Serial.println(manualCharging);
+          Serial.print("Charging Period: ");
+          Serial.println(chargingPeriod);
+          Serial.print("Charging: ");
+          Serial.println(charging);
         }
 
     }
@@ -317,32 +259,20 @@ void loop() {
         digitalWrite(relayBoomDn, LOW);
     }
 
-    // if (auto1RequestStatus) {
-    //   if (!digitalRead(hopperLimitSwitch)) {
-    //     digitalWrite(relay1, LOW);
-    //     hopperStartMillis = millis();
-    //   } else if (digitalRead(hopperLimitSwitch) && hopperFillAllowed) {
-    //     digitalWrite(relay1, HIGH);
-    //   }
-    // } else {
-    //   digitalWrite(relay1, LOW);
-    // }
-
-    if (auto1RequestStatus && hopperFillAllowed) {
-      if(digitalRead(hopperLimitSwitch)) {
-        digitalWrite(relay1, HIGH);
-      } else if (!digitalRead(hopperLimitSwitch)) {
+    if (auto1RequestStatus) {
+      if (!digitalRead(hopperLimitSwitch)) {
         digitalWrite(relay1, LOW);
-        hopperFillAllowed = false;
-        hopperFlag = false;
         hopperStartMillis = millis();
+      } else if (digitalRead(hopperLimitSwitch) && hopperFillAllowed) {
+        digitalWrite(relay1, HIGH);
       }
+    } else {
+      digitalWrite(relay1, LOW);
     }
 
     if (!auto2RequestStatus) {
       digitalWrite(relay2, LOW);
       charging = false;
-      manualCharging = false;
     }
 
     //dummy
@@ -355,5 +285,5 @@ void loop() {
     allowHopperFill();
     charge();
 
-    // Serial.println(hopperFillAllowed);
+    // Serial.println(charging);
 }
