@@ -4,8 +4,8 @@
 
 Nextion myNextion(nextion, 9600);
 
-const int auto1In = 3;
-const int auto2In = 2;
+const int interlockInput = 3;
+const int interlockReset = 2;
 const int hopperLimitSwitch = 18;
 // const int rpm0In = 19;
 const int rpm1In = 20;
@@ -46,6 +46,7 @@ bool charging = false;
 bool manualCharging = false;
 bool counting = false;
 bool autoChargingComplete = false;
+bool interlockFlag = false;
 
 void getVariables() {
   vaRate = myNextion.getComponentValue("va0");
@@ -125,14 +126,20 @@ void setup() {
     pinMode(relayBoomUp, OUTPUT);
     pinMode(relayBoomDn, OUTPUT);
 
-    digitalWrite(relay1, HIGH);
-    digitalWrite(relay2, HIGH);
-    digitalWrite(relaySmallReelUp, HIGH);
-    digitalWrite(relaySmallReelDn, HIGH);
-    digitalWrite(relayBigReelUp, HIGH);
-    digitalWrite(relayBigReelDn, HIGH);
-    digitalWrite(relayBoomUp, HIGH);
-    digitalWrite(relayBoomDn, HIGH);
+    pinMode(interlockInput, INPUT);
+    pinMode(interlockReset, INPUT);
+    pinMode(rpm1In, INPUT);
+    pinMode(rpm2In, INPUT);
+    pinMode(hopperLimitSwitch, INPUT);
+
+    digitalWrite(relay1, LOW);
+    digitalWrite(relay2, LOW);
+    digitalWrite(relaySmallReelUp, LOW);
+    digitalWrite(relaySmallReelDn, LOW);
+    digitalWrite(relayBigReelUp, LOW);
+    digitalWrite(relayBigReelDn, LOW);
+    digitalWrite(relayBoomUp, LOW);
+    digitalWrite(relayBoomDn, LOW);
 
     Serial.begin(9600);
     myNextion.init();
@@ -176,7 +183,7 @@ void loop() {
           Serial.println("");
           curr = 0;
           currVal = 0;
-          digitalWrite(relay2, LOW);
+          digitalWrite(relay2, HIGH);
           charging = true;
           manualCharging = false;
           // auto2StartMillis = currentMillis;
@@ -188,7 +195,7 @@ void loop() {
           manualCharging = true;
           charging = false;
           //chargingPeriod = 60;
-          digitalWrite(relay2, LOW);
+          digitalWrite(relay2, HIGH);
           Serial.print("Manual Charging: ");
           Serial.println(manualCharging);
         }
@@ -197,80 +204,80 @@ void loop() {
     if (message == "65 0 5 1 ffff ffff ffff") {
         Serial.print("Big Reel Forward. Code: ");
         Serial.println(message);
-        digitalWrite(relayBigReelUp, LOW);
+        digitalWrite(relayBigReelUp, HIGH);
     }
 
     if (message == "65 0 5 0 ffff ffff ffff") {
         Serial.print("Big Reel Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relayBigReelUp, HIGH);
+        digitalWrite(relayBigReelUp, LOW);
     }
 
     if (message == "65 0 6 1 ffff ffff ffff") {
         Serial.print("Big Reel Reverse. Code: ");
         Serial.println(message);
-        digitalWrite(relayBigReelDn, LOW);
+        digitalWrite(relayBigReelDn, HIGH);
     }
 
     if (message == "65 0 6 0 ffff ffff ffff") {
         Serial.print("Big Reel Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relayBigReelDn, HIGH);
+        digitalWrite(relayBigReelDn, LOW);
     }
 
     if (message == "65 0 7 1 ffff ffff ffff") {
         Serial.print("Small Reel Forward. Code: ");
         Serial.println(message);
-        digitalWrite(relaySmallReelUp, LOW);
+        digitalWrite(relaySmallReelUp, HIGH);
     }
 
     if (message == "65 0 7 0 ffff ffff ffff") {
         Serial.print("Small Reel Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relaySmallReelUp, HIGH);
+        digitalWrite(relaySmallReelUp, LOW);
     }
 
     if (message == "65 0 8 1 ffff ffff ffff") {
         Serial.print("Small Reel Reverse. Code: ");
         Serial.println(message);
-        digitalWrite(relaySmallReelDn, LOW);
+        digitalWrite(relaySmallReelDn, HIGH);
     }
 
     if (message == "65 0 8 0 ffff ffff ffff") {
         Serial.print("Small Reel Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relaySmallReelDn, HIGH);
+        digitalWrite(relaySmallReelDn, LOW);
     }
 
     if (message == "65 0 1 1 ffff ffff ffff") {
         Serial.print("Boom Forward. Code: ");
         Serial.println(message);
-        digitalWrite(relayBoomUp, LOW);
+        digitalWrite(relayBoomUp, HIGH);
     }
 
     if (message == "65 0 1 0 ffff ffff ffff") {
         Serial.print("Boom Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relayBoomUp, HIGH);
+        digitalWrite(relayBoomUp, LOW);
     }
 
     if (message == "65 0 4 1 ffff ffff ffff") {
         Serial.print("Boom Reverse. Code: ");
         Serial.println(message);
-        digitalWrite(relayBoomDn, LOW);
+        digitalWrite(relayBoomDn, HIGH);
     }
 
     if (message == "65 0 4 0 ffff ffff ffff") {
         Serial.print("Boom Stop. Code: ");
         Serial.println(message);
-        digitalWrite(relayBoomDn, HIGH);
+        digitalWrite(relayBoomDn, LOW);
     }
 
     if (auto1RequestStatus && hopperFillAllowed) {
       if(!digitalRead(hopperLimitSwitch)) {
-        digitalWrite(relay1, LOW);
-      } else if (digitalRead(hopperLimitSwitch)) {
         digitalWrite(relay1, HIGH);
+      } else if (digitalRead(hopperLimitSwitch)) {
+        digitalWrite(relay1, LOW);
         hopperFillAllowed = false;
         hopperFlag = false;
         hopperStartMillis = millis();
@@ -278,13 +285,13 @@ void loop() {
     }
 
     if (!auto2RequestStatus) {
-      digitalWrite(relay2, HIGH);
+      digitalWrite(relay2, LOW);
       charging = false;
       manualCharging = false;
     }
 
     if (!auto1RequestStatus) {
-      digitalWrite(relay1, HIGH);
+      digitalWrite(relay1, LOW);
     }
 
     currentMillis = millis();
@@ -300,7 +307,21 @@ void loop() {
 
     if (autoChargingComplete) {
       myNextion.sendCommand("click bt1,1");
-      digitalWrite(relay2, LOW);
+      digitalWrite(relay2, HIGH);
       autoChargingComplete = false;
+    }
+
+    // interlock function
+    if (digitalRead(interlockInput)) {
+      interlockFlag = true;
+    }
+
+    if (interlockFlag) {
+      digitalWrite(relay1, LOW);
+      digitalWrite(relay2, LOW);
+    }
+
+    if (!digitalRead(interlockReset)) {
+      interlockFlag = false;
     }
 }
